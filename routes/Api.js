@@ -11,6 +11,13 @@ db.run(`CREATE TABLE IF NOT EXISTS urls (
     short_url TEXT NOT NULL
 )`);
 
+db.run(`CREATE TABLE IF NOT EXISTS visits (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    short_url TEXT NOT NULL,
+    ip TEXT NOT NULL,
+    timestamp TEXT NOT NULL
+)`);
+
 // Новый маршрут POST /shorten
 router.post('/shorten', (req, res) => {
     const { originalUrl } = req.body;
@@ -40,9 +47,7 @@ router.post('/shorten', (req, res) => {
     });
 });
 
-
-
-// Новый маршрут для редиректа по короткой ссылке
+// Новый маршрут для редиректа по короткой ссылке с логированием
 router.get('/:shortId', (req, res) => {
     const shortId = req.params.shortId;
     const shortUrl = `${process.env.BASE_URL || "http://localhost:4000"}/${shortId}`;
@@ -51,7 +56,13 @@ router.get('/:shortId', (req, res) => {
             return res.status(500).json({ success: false, message: err.message });
         }
         if (row) {
-            return res.redirect(row.url);
+            // Логируем переход
+            const ip = req.ip;
+            const timestamp = new Date().toISOString();
+            db.run('INSERT INTO visits (short_url, ip, timestamp) VALUES (?, ?, ?)', [shortUrl, ip, timestamp], function(err) {
+                // Даже если логирование не удалось, всё равно делаем редирект
+                return res.redirect(row.url);
+            });
         } else {
             return res.status(404).json({ success: false, message: "Short URL not found" });
         }
