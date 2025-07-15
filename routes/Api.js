@@ -11,16 +11,17 @@ db.run(`CREATE TABLE IF NOT EXISTS urls (
     short_url TEXT NOT NULL
 )`);
 
-router.post('/shrink', (req, res) => {
-    const { link } = req.body;
-    if (!link) {
+// Новый маршрут POST /shorten
+router.post('/shorten', (req, res) => {
+    const { originalUrl } = req.body;
+    if (!originalUrl) {
         return res.status(400).json({
             success: false,
-            message: "Link is required"
+            message: "originalUrl is required"
         });
     }
 
-    db.get('SELECT * FROM urls WHERE url = ?', [link], (err, row) => {
+    db.get('SELECT * FROM urls WHERE url = ?', [originalUrl], (err, row) => {
         if (err) {
             return res.status(500).json({ success: false, message: err.message });
         }
@@ -29,7 +30,7 @@ router.post('/shrink', (req, res) => {
         } else {
             const shortId = nanoid(8);
             const shortUrl = `${process.env.BASE_URL || "http://localhost:4000"}/${shortId}`;
-            db.run('INSERT INTO urls (url, short_url) VALUES (?, ?)', [link, shortUrl], function(err) {
+            db.run('INSERT INTO urls (url, short_url) VALUES (?, ?)', [originalUrl, shortUrl], function(err) {
                 if (err) {
                     return res.status(500).json({ success: false, message: err.message });
                 }
@@ -38,6 +39,8 @@ router.post('/shrink', (req, res) => {
         }
     });
 });
+
+
 
 // Новый маршрут для редиректа по короткой ссылке
 router.get('/:shortId', (req, res) => {
