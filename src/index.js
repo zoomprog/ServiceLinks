@@ -1,6 +1,7 @@
 import express from "express";
 import dotenv from "dotenv";
 import sqlite3 from "sqlite3";
+import cors from "cors";
 import apiRouter from "./routes/api.js";
 import { initUrlTable } from "./models/urlModel.js";
 import { initVisitTable } from "./models/visitModel.js";
@@ -14,6 +15,7 @@ const db = new sqlite3.Database('./database.sqlite');
 initUrlTable(db);
 initVisitTable(db);
 
+app.use(cors({ origin: process.env.CORS_ORIGIN || '*' }));
 app.use(express.json());
 
 // Передаём db через req.app.locals

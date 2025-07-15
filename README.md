@@ -2,7 +2,7 @@
 
 ## Описание
 
-Простой сервис для сокращения ссылок с хранением переходов и статистикой. Реализован на Node.js (Express) и SQLite. Поддерживает JWT-аутентификацию для просмотра статистики.
+Простой сервис для сокращения ссылок с хранением переходов и статистикой. Реализован на Node.js (Express) и SQLite. Поддерживает JWT-аутентификацию для просмотра статистики. Есть поддержка TTL (срока жизни ссылок) и CORS.
 
 ---
 
@@ -20,9 +20,12 @@
 3. Создайте файл `.env` в корне проекта и добавьте:
    ```
    PORT=4000
-   JWT_SECRET=your_secret_key
+   JWT_SECRET=8f2b1c4e5d6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1b2c
+   DEFAULT_TTL_HOURS=200
+   CORS_ORIGIN=*
    ```
-   (Замените `your_secret_key` на любой сложный набор символов)
+   - `DEFAULT_TTL_HOURS` — срок жизни ссылки по умолчанию (в часах, 168 = 7 дней)
+   - `CORS_ORIGIN` — разрешённые домены для CORS (например, `*` или `https://yourdomain.com`)
 
 ---
 
@@ -42,21 +45,24 @@ npm start
 **Тело запроса:**
 ```json
 {
-  "originalUrl": "https://example.com/some/long/link"
+  "originalUrl": "https://example.com/some/long/link",
+  "ttl": 24 // (необязательно, срок жизни в часах)
 }
 ```
 **Ответ:**
 ```json
 {
-  "shortUrl": "http://localhost:4000/AbCdEf12"
+  "shortUrl": "http://localhost:4000/AbCdEf12",
+  "expiresAt": "2025-07-22T12:00:00.000Z"
 }
 ```
 
 ### 2. Переход по короткой ссылке
 **GET** `/:code`
 
-- Редиректит на исходный URL
+- Редиректит на исходный URL (если не истёк TTL)
 - Логирует IP и время перехода
+- Если срок жизни истёк — возвращает 404
 
 ### 3. Получение статистики (требует JWT)
 **GET** `/stats/:code`
@@ -72,7 +78,8 @@ Authorization: Bearer <ваш_токен>
   "visits": 12,
   "firstVisit": "2025-07-05T14:23:00Z",
   "lastVisit": "2025-07-09T08:50:00Z",
-  "uniqueIps": 5
+  "uniqueIps": 5,
+  "expiresAt": "2025-07-22T12:00:00.000Z"
 }
 ```
 
@@ -90,7 +97,14 @@ Authorization: Bearer <ваш_токен>
 
 ## Примеры curl-запросов
 
-**Создать короткую ссылку:**
+**Создать короткую ссылку с TTL 1 час:**
+```sh
+curl -X POST http://localhost:4000/shorten \
+  -H "Content-Type: application/json" \
+  -d '{"originalUrl":"https://example.com", "ttl":1}'
+```
+
+**Создать короткую ссылку (TTL по умолчанию):**
 ```sh
 curl -X POST http://localhost:4000/shorten \
   -H "Content-Type: application/json" \
@@ -105,7 +119,7 @@ curl -X POST http://localhost:4000/shorten \
 ```
 **Ответ:**
 ```json
-{"shortUrl":"http://localhost:4000/AbCdEf12"}
+{"shortUrl":"http://localhost:4000/AbCdEf12", "expiresAt": "2025-07-22T12:00:00.000Z"}
 ```
 
 **Перейти по короткой ссылке:**
@@ -118,8 +132,22 @@ curl -v http://localhost:4000/AbCdEf12
 curl http://localhost:4000/token
 ```
 
-**Получить статистику:**
+**Получить статистику по короткой ссылке:**
 ```sh
 curl http://localhost:4000/stats/AbCdEf12 \
   -H "Authorization: Bearer <ваш_токен>"
 ```
+
+# Bash-последовательность для проверки GET /stats/:code
+
+```sh
+# Получить токен
+TOKEN=$(curl -s http://localhost:4000/token | jq -r .token)
+
+# Получить статистику по короткой ссылке (замените AbCdEf12 на ваш код)
+curl http://localhost:4000/stats/AbCdEf12 \
+  -H "Authorization: Bearer $TOKEN"
+```
+
+
+

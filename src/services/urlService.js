@@ -3,6 +3,16 @@ import { generateToken } from '../utils/jwt.js';
 import * as urlModel from '../models/urlModel.js';
 import * as visitModel from '../models/visitModel.js';
 
+function getExpiresAt(ttl) {
+    const hours = ttl ? Number(ttl) : Number(process.env.DEFAULT_TTL_HOURS) || 168;
+    const expires = new Date(Date.now() + hours * 60 * 60 * 1000);
+    return expires.toISOString();
+}
+
+function isExpired(expiresAt) {
+    return expiresAt && new Date(expiresAt) < new Date();
+}
+
 export const getToken = (req, res) => {
     const token = generateToken({ user: 'admin' });
     res.json({ token });
@@ -10,7 +20,7 @@ export const getToken = (req, res) => {
 
 export const createShortUrl = (req, res) => {
     const db = req.app.locals.db;
-    const { originalUrl } = req.body;
+    const { originalUrl, ttl } = req.body;
     if (!originalUrl) {
         return res.status(400).json({ success: false, message: 'originalUrl is required' });
     }
@@ -19,17 +29,21 @@ export const createShortUrl = (req, res) => {
             return res.status(500).json({ success: false, message: err.message });
         }
         if (row) {
-            return res.json({ shortUrl: row.short_url });
-        } else {
-            const shortId = nanoid(8);
-            const shortUrl = `${process.env.BASE_URL || "http://localhost:4000"}/${shortId}`;
-            urlModel.insertUrl(db, originalUrl, shortUrl, function(err) {
-                if (err) {
-                    return res.status(500).json({ success: false, message: err.message });
-                }
-                return res.json({ shortUrl });
-            });
+            if (isExpired(row.expires_at)) {
+                urlModel.deleteUrlByShort(db, row.short_url, () => {});
+            } else {
+                return res.json({ shortUrl: row.short_url, expiresAt: row.expires_at });
+            }
         }
+        const shortId = nanoid(8);
+        const shortUrl = `${process.env.BASE_URL || "http://localhost:4000"}/${shortId}`;
+        const expiresAt = getExpiresAt(ttl);
+        urlModel.insertUrl(db, originalUrl, shortUrl, expiresAt, function(err) {
+            if (err) {
+                return res.status(500).json({ success: false, message: err.message });
+            }
+            return res.json({ shortUrl, expiresAt });
+        });
     });
 };
 
@@ -41,8 +55,9 @@ export const getStats = (req, res) => {
         if (err) {
             return res.status(500).json({ success: false, message: err.message });
         }
-        if (!urlRow) {
-            return res.status(404).json({ success: false, message: 'Short URL not found' });
+        if (!urlRow || isExpired(urlRow.expires_at)) {
+            if (urlRow) urlModel.deleteUrlByShort(db, shortUrl, () => {});
+            return res.status(404).json({ success: false, message: 'Короткий URL-адрес не найден или устарел.' });
         }
         visitModel.getVisitsByShortUrl(db, shortUrl, (err, visits) => {
             if (err) {
@@ -63,7 +78,8 @@ export const getStats = (req, res) => {
                 visits: visitsCount,
                 firstVisit,
                 lastVisit,
-                uniqueIps
+                uniqueIps,
+                expiresAt: urlRow.expires_at
             });
         });
     });
@@ -77,7 +93,7 @@ export const redirectShortUrl = (req, res) => {
         if (err) {
             return res.status(500).json({ success: false, message: err.message });
         }
-        if (row) {
+        if (row && !isExpired(row.expires_at)) {
             // Логируем переход
             const ip = req.ip === '::1' ? '127.0.0.1' : req.ip;
             const timestamp = new Date().toISOString();
@@ -86,7 +102,8 @@ export const redirectShortUrl = (req, res) => {
                 return res.redirect(row.url);
             });
         } else {
-            return res.status(404).json({ success: false, message: "Short URL not found" });
+            if (row) urlModel.deleteUrlByShort(db, shortUrl, () => {});
+            return res.status(404).json({ success: false, message: "Короткий URL-адрес не найден или устарел." });
         }
     });
 }; 
