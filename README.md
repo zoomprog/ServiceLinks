@@ -20,13 +20,9 @@
 3. Создайте файл `.env` в корне проекта и добавьте:
    ```
    PORT=4000
-   JWT_SECRET=8f2b1c4e5d6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1b2c
    DEFAULT_TTL_HOURS=200
    CORS_ORIGIN=*
    ```
-   - `DEFAULT_TTL_HOURS` — срок жизни ссылки по умолчанию (в часах, 168 = 7 дней)
-   - `CORS_ORIGIN` — разрешённые домены для CORS (например, `*` или `https://yourdomain.com`)
-
 ---
 
 ## Запуск
